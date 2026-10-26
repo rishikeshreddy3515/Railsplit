@@ -41,6 +41,8 @@ export interface SectionAvailability {
   arrivalDay: number;
   travelClass: TravelClass;
   status: AvailabilityStatus;
+  statusDetail?: string; // e.g. 'AVAILABLE 18', 'WL 32', 'RAC 04'
+  quota?: string; // e.g. 'GN', 'RLWL', 'PQWL'
   fare: number | null; // null when unavailable
   date: string; // ISO date string
 }
@@ -53,6 +55,7 @@ export interface SplitResult {
   leg2: SectionAvailability;
   totalFare: number | null; // null if either fare is missing
   bothConfirmed: boolean;
+  whyRecommendation?: string;
 }
 
 export interface DirectResult {
@@ -66,6 +69,8 @@ export interface DirectResult {
   arrivalDay: number;
   travelClass: TravelClass;
   status: AvailabilityStatus;
+  statusDetail?: string;
+  quota?: string;
   fare: number | null;
   date: string;
   stops: StopTiming[];
@@ -76,6 +81,37 @@ export interface SearchRequest {
   to: Station;
   date: string;
   travelClass: TravelClass;
+  includeSplits?: boolean;
+  trainNumber?: string;
+}
+
+// ── Dijkstra Graph Execution Trace Types ──
+
+export type DijkstraDecisionType =
+  | 'OPTIMAL_RELAXED'
+  | 'CONFIRMED_SUBOPTIMAL'
+  | 'PENALIZED_WAITLIST'
+  | 'PRUNED_UNAVAILABLE';
+
+export interface DijkstraNodeTrace {
+  trainNumber?: string;
+  trainName?: string;
+  splitStation: Station;
+  leg1: SectionAvailability;
+  leg2: SectionAvailability;
+  leg1Cost: number;
+  leg2Cost: number;
+  totalCost: number;
+  decision: DijkstraDecisionType;
+  decisionReason: string;
+}
+
+export interface GraphExecutionMetrics {
+  verticesCount: number;
+  edgesEvaluated: number;
+  executionTimeMs: number;
+  intermediateCandidatesCount: number;
+  traces: DijkstraNodeTrace[];
 }
 
 export interface SearchResponse {
@@ -83,6 +119,7 @@ export interface SearchResponse {
   directResults: DirectResult[];
   splitResults: SplitResult[];
   message: string | null;
+  graphMetrics?: GraphExecutionMetrics;
 }
 
 // ── Data provider interface ──
