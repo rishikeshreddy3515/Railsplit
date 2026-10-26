@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # RailSplit 🚄
 
 > **Same-Train Indian Railways Split-Ticketing Finder**  
@@ -132,3 +133,6 @@ railsplit/
 
 ## 📄 License
 MIT License. Built for seamless railway split-ticketing discovery.
+=======
+# Railsplit
+>>>>>>> ef79f906ab4286dc33543ca7902691a2135ba2d6
