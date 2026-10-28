@@ -59,14 +59,19 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const results = await searchSplitJourneys(provider, {
-    from: fromStation,
-    to: toStation,
-    date,
-    travelClass,
-    includeSplits,
-    trainNumber,
-  });
+  try {
+    const results = await searchSplitJourneys(provider, {
+      from: fromStation,
+      to: toStation,
+      date,
+      travelClass,
+      includeSplits,
+      trainNumber,
+    });
 
-  return NextResponse.json(results);
+    return NextResponse.json(results);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Internal search error';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

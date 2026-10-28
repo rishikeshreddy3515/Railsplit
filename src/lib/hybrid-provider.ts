@@ -19,6 +19,7 @@ import {
   TrainRoute,
   SectionAvailability,
   TravelClass,
+  AvailabilityStatus,
 } from './types';
 import { MockDataProvider } from './mock-data';
 
@@ -347,9 +348,20 @@ export class HybridDataProvider implements DataProvider {
         travelClass
       );
 
+      const liveStatus = json.data?.status || json.status;
+      const liveStatusDetail = json.data?.statusDetail || json.statusDetail;
+      const liveQuota = json.data?.quota || json.quota;
+      const liveFare = typeof json.data?.fare === 'number'
+        ? json.data.fare
+        : (typeof json.fare === 'number' ? json.fare : fallback.fare);
+
       return {
         ...fallback,
         trainName: json.data?.trainName || json.trainName || fallback.trainName,
+        status: (liveStatus as AvailabilityStatus) || fallback.status,
+        statusDetail: liveStatusDetail || fallback.statusDetail,
+        quota: liveQuota || fallback.quota,
+        fare: liveFare,
       };
     } finally {
       clearTimeout(timeout);
@@ -369,6 +381,10 @@ export class HybridDataProvider implements DataProvider {
   }
 
   private _setInCache<T>(key: string, data: T, ttlMs: number) {
+    if (this.cache.size >= 1000) {
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey) this.cache.delete(oldestKey);
+    }
     this.cache.set(key, {
       timestamp: Date.now(),
       data,

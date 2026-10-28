@@ -490,4 +490,85 @@ describe('Universal Route Coverage & Dijkstra Proof', () => {
       }
     }
   });
+
+  test('Dijkstra trace assigns OPTIMAL_RELAXED strictly to the lowest-cost confirmed split', async () => {
+    const { runSameTrainDijkstraWithTrace } = await import('./dijkstra-split');
+
+    const intermediates: StopTiming[] = [
+      stop('ST1', '12:00', '12:10', 1),
+      stop('ST2', '14:00', '14:10', 1),
+    ];
+
+    const leg1Map = new Map<string, SectionAvailability>([
+      ['ST1', makeAvailability('12345', 'ORIG', 'ST1', 'CONFIRMED', 1200)],
+      ['ST2', makeAvailability('12345', 'ORIG', 'ST2', 'CONFIRMED', 800)],
+    ]);
+
+    const leg2Map = new Map<string, SectionAvailability>([
+      ['ST1', makeAvailability('12345', 'ST1', 'DEST', 'CONFIRMED', 1000)], // Total 2200
+      ['ST2', makeAvailability('12345', 'ST2', 'DEST', 'CONFIRMED', 600)],  // Total 1400 (lower cost!)
+    ]);
+
+    const { metrics } = runSameTrainDijkstraWithTrace(
+      '12345',
+      'Test Express',
+      intermediates,
+      leg1Map,
+      leg2Map
+    );
+
+    const st1Trace = metrics.traces.find((t) => t.splitStation.code === 'ST1');
+    const st2Trace = metrics.traces.find((t) => t.splitStation.code === 'ST2');
+
+    // ST2 has lower cost (1400 vs 2200), so ST2 must be OPTIMAL_RELAXED even though ST1 came first in the route!
+    expect(st2Trace?.decision).toBe('OPTIMAL_RELAXED');
+    expect(st1Trace?.decision).toBe('CONFIRMED_SUBOPTIMAL');
+  });
+
+  test('searchSplitJourneys is resilient to intermediate split check failures', async () => {
+    const testTrain: TrainRoute = {
+      trainNumber: '99999',
+      trainName: 'Resilience Express',
+      stops: [
+        stop('A', null, '08:00', 1),
+        stop('B', '10:00', '10:10', 1),
+        stop('C', '12:00', '12:10', 1),
+        stop('D', '14:00', null, 1),
+      ],
+      classesAvailable: ['SL'],
+      runningDays: [0, 1, 2, 3, 4, 5, 6],
+    };
+
+    const faultyProvider: DataProvider = {
+      async getStations() {
+        return [station('A'), station('B'), station('C'), station('D')];
+      },
+      async findTrains() {
+        return [testTrain];
+      },
+      async checkAvailability(tNum, fromCode, toCode) {
+        // Direct train check
+        if (fromCode === 'A' && toCode === 'D') {
+          return makeAvailability(tNum, fromCode, toCode, 'WAITLIST', 500);
+        }
+        // Station B throws an error
+        if (fromCode === 'B' || toCode === 'B') {
+          throw new Error('Remote upstream timeout at station B');
+        }
+        // Station C succeeds
+        return makeAvailability(tNum, fromCode, toCode, 'CONFIRMED', 300);
+      },
+    };
+
+    const response = await searchSplitJourneys(faultyProvider, {
+      from: station('A'),
+      to: station('D'),
+      date: '2026-11-01',
+      travelClass: 'SL',
+    });
+
+    // Does not crash, and discovers the split at station C
+    expect(response.splitResults.length).toBeGreaterThan(0);
+    expect(response.splitResults[0].splitStation.code).toBe('C');
+  });
 });

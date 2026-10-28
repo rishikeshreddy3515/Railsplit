@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { SearchResponse, SplitResult } from '@/lib/types';
-import { calculateDuration, calculateTransferDuration, formatStationName } from '@/lib/utils';
+import { calculateDuration, calculateDurationMinutes, calculateTransferDuration, formatStationName, formatFare } from '@/lib/utils';
 
 interface SearchResultsViewProps {
   results: SearchResponse;
@@ -43,11 +43,49 @@ export function SearchResultsView({
       list = list.filter((s) => s.leg1.travelClass === selectedClass || s.leg2.travelClass === selectedClass);
     }
 
+    // Departure time filter
+    if (selectedDeparture !== 'All') {
+      list = list.filter((s) => {
+        const depTime = s.leg1.departureTime;
+        if (!depTime) return true;
+        const hour = parseInt(depTime.split(':')[0], 10);
+        if (isNaN(hour)) return true;
+        if (selectedDeparture === 'Before 12:00') return hour < 12;
+        if (selectedDeparture === '12:00 to 18:00') return hour >= 12 && hour < 18;
+        if (selectedDeparture === 'After 18:00') return hour >= 18;
+        return true;
+      });
+    }
+
+    // Longest total duration filter
+    list = list.filter((s) => {
+      const durMin = calculateDurationMinutes(
+        s.leg1.departureTime,
+        s.leg1.departureDay,
+        s.leg2.arrivalTime,
+        s.leg2.arrivalDay
+      );
+      return durMin <= longestTime * 60;
+    });
+
     if (sortBy === 'cheapest') {
       list.sort((a, b) => (a.totalFare ?? 99999) - (b.totalFare ?? 99999));
     } else if (sortBy === 'fastest') {
-      // Prioritize same-train splits with 0m change
-      list.sort((a, b) => (a.bothConfirmed === b.bothConfirmed ? 0 : a.bothConfirmed ? -1 : 1));
+      list.sort((a, b) => {
+        const durA = calculateDurationMinutes(
+          a.leg1.departureTime,
+          a.leg1.departureDay,
+          a.leg2.arrivalTime,
+          a.leg2.arrivalDay
+        );
+        const durB = calculateDurationMinutes(
+          b.leg1.departureTime,
+          b.leg1.departureDay,
+          b.leg2.arrivalTime,
+          b.leg2.arrivalDay
+        );
+        return durA - durB;
+      });
     } else {
       // Best: both confirmed first, then lowest fare
       list.sort((a, b) => {
@@ -57,7 +95,7 @@ export function SearchResultsView({
     }
 
     return list;
-  }, [splitResults, filterTrain, selectedClass, sortBy]);
+  }, [splitResults, filterTrain, selectedClass, selectedDeparture, longestTime, sortBy]);
 
   const confirmedSplits = processedSplits.filter((s) => s.bothConfirmed);
 
@@ -515,7 +553,7 @@ export function SearchResultsView({
                                 {split.leg1.statusDetail || split.leg1.status}
                               </span>
                               <span className="text-xs font-extrabold text-slate-900">
-                                ₹{split.leg1.fare ?? 1180}
+                                {formatFare(split.leg1.fare)}
                               </span>
                               <span className="text-[10px] font-mono text-slate-400">
                                 {split.leg1.quota || 'RLWL'}
@@ -554,7 +592,7 @@ export function SearchResultsView({
                                 {split.leg2.statusDetail || split.leg2.status}
                               </span>
                               <span className="text-xs font-extrabold text-slate-900">
-                                ₹{split.leg2.fare ?? 3000}
+                                {formatFare(split.leg2.fare)}
                               </span>
                               <span className="text-[10px] font-mono text-slate-400">
                                 {split.leg2.quota || 'RLWL'}
@@ -567,7 +605,7 @@ export function SearchResultsView({
                         <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
                           <div>
                             <div className="text-2xl font-black text-slate-900">
-                              ₹{split.totalFare ?? ((split.leg1.fare ?? 0) + (split.leg2.fare ?? 0))}
+                              {formatFare(split.totalFare ?? ((split.leg1.fare ?? 0) + (split.leg2.fare ?? 0)))}
                             </div>
                             <div className="text-[11px] text-slate-500 font-medium">
                               {totalDuration} door to door

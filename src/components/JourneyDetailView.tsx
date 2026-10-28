@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { SplitResult, SearchRequest } from '@/lib/types';
-import { calculateDuration, calculateTransferDuration, formatStationName } from '@/lib/utils';
+import { calculateDuration, calculateTransferDuration, formatStationName, formatFare } from '@/lib/utils';
 
 interface JourneyDetailViewProps {
   split: SplitResult;
@@ -22,8 +22,14 @@ export function JourneyDetailView({
 
   const { leg1, leg2, splitStation, totalFare, trainName } = split;
 
-  const leg1Seats = leg1.statusDetail?.match(/\d+/)?.[0] || '12';
-  const leg2Seats = leg2.statusDetail?.match(/\d+/)?.[0] || '8';
+  const leg1SeatsMatch = leg1.statusDetail?.match(/\d+/)?.[0];
+  const leg2SeatsMatch = leg2.statusDetail?.match(/\d+/)?.[0];
+
+  const bookingTipText = (leg1SeatsMatch && leg2SeatsMatch)
+    ? Number(leg2SeatsMatch) <= Number(leg1SeatsMatch)
+      ? `Book leg 2 first. It has ${leg2SeatsMatch} seats left against ${leg1SeatsMatch} on leg 1.`
+      : `Book leg 1 first. It has ${leg1SeatsMatch} seats left against ${leg2SeatsMatch} on leg 2.`
+    : `Both legs have confirmed allocations in their respective station quotas.`;
 
   const isSameTrain = leg1.trainNumber === leg2.trainNumber;
 
@@ -118,7 +124,7 @@ export function JourneyDetailView({
                     {leg1.statusDetail || leg1.status}
                   </span>
                   <div className="text-xs font-extrabold text-slate-900 mt-1">
-                    ₹{leg1.fare ?? 1180}
+                    {formatFare(leg1.fare)}
                   </div>
                 </div>
               </div>
@@ -177,7 +183,7 @@ export function JourneyDetailView({
                     {leg2.statusDetail || leg2.status}
                   </span>
                   <div className="text-xs font-extrabold text-slate-900 mt-1">
-                    ₹{leg2.fare ?? 3000}
+                    {formatFare(leg2.fare)}
                   </div>
                 </div>
               </div>
@@ -222,11 +228,11 @@ export function JourneyDetailView({
               <div className="space-y-3 text-xs border-b border-slate-800 pb-4 mb-4">
                 <div className="flex items-center justify-between text-slate-300">
                   <span>Leg 1 · {request.from.code} to {splitStation.code} ({leg1.travelClass})</span>
-                  <span className="font-mono font-bold text-white">₹{leg1.fare ?? 0}</span>
+                  <span className="font-mono font-bold text-white">{formatFare(leg1.fare)}</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-300">
                   <span>Leg 2 · {splitStation.code} to {request.to.code} ({leg2.travelClass})</span>
-                  <span className="font-mono font-bold text-white">₹{leg2.fare ?? 0}</span>
+                  <span className="font-mono font-bold text-white">{formatFare(leg2.fare)}</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-400">
                   <span>IRCTC charges</span>
@@ -237,14 +243,14 @@ export function JourneyDetailView({
               <div className="flex items-baseline justify-between mb-6">
                 <span className="text-xs text-slate-300">Total before charges</span>
                 <span className="text-2xl font-black text-white">
-                  ₹{totalFare ?? ((leg1.fare ?? 0) + (leg2.fare ?? 0))}
+                  {formatFare(totalFare ?? ((leg1.fare ?? 0) + (leg2.fare ?? 0)))}
                 </span>
               </div>
 
               {/* Booking Advice */}
               <div className="bg-slate-800/80 rounded-xl p-3 text-xs text-slate-300 mb-5 border border-slate-700/80">
                 <span className="font-bold text-white block mb-0.5">Booking Tip:</span>
-                Book leg 2 first. It has {leg2Seats} seats left against {leg1Seats} on leg 1.
+                {bookingTipText}
               </div>
 
               {/* Action Buttons */}

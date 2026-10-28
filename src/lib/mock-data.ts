@@ -315,7 +315,16 @@ const STATION_COORDS: Record<string, { lat: number; lon: number }> = {
 };
 
 // Cache for synthesized train routes so all sub-segments and checks resolve
+const MAX_SYNTHESIZED_ROUTES = 500;
 const SYNTHESIZED_ROUTES = new Map<string, TrainRoute>();
+
+function cacheSynthesizedRoute(key: string, route: TrainRoute) {
+  if (SYNTHESIZED_ROUTES.size >= MAX_SYNTHESIZED_ROUTES) {
+    const oldestKey = SYNTHESIZED_ROUTES.keys().next().value;
+    if (oldestKey) SYNTHESIZED_ROUTES.delete(oldestKey);
+  }
+  SYNTHESIZED_ROUTES.set(key, route);
+}
 
 export function getAnyTrain(trainNumber: string): TrainRoute | undefined {
   return (
@@ -408,7 +417,7 @@ export function synthesizeRouteForPair(fromCode: string, toCode: string): TrainR
   const allStations = [fromStation, ...intermediateStations, toStation];
 
   const seed = simpleHash(`${fromCode}:${toCode}`);
-  const trainNum = `19${(seed % 800) + 100}`;
+  const trainNum = `${10000 + (seed % 89999)}`;
   const trainName = `${fromStation.name.replace(/ Junction| Central| City/g, '')} - ${toStation.name.replace(/ Junction| Central| City/g, '')} Superfast Express`;
 
   let currentHour = 6 + (seed % 10);
@@ -528,7 +537,7 @@ function simulateQuotaAvailability(
   // Intermediate sub-segment:
   // If either endpoint is a major junction (e.g. ADI, BRC, ST, PUNE, SUR),
   // Remote Location (RLWL) pools provide high confirmed seat availability!
-  const connectsMajorJunction = MAJOR_JUNCTIONS.has(from) && MAJOR_JUNCTIONS.has(to);
+  const connectsMajorJunction = MAJOR_JUNCTIONS.has(from) || MAJOR_JUNCTIONS.has(to);
   const quotaType = connectsMajorJunction ? 'RLWL' : 'PQWL';
 
   if (connectsMajorJunction) {
@@ -614,6 +623,9 @@ export class MockDataProvider implements DataProvider {
     date: string
   ): Promise<TrainRoute[]> {
     if (from === to) return [];
+    if (!date || isNaN(Date.parse(date))) {
+      throw new Error(`Invalid travel date format: "${date}". Expected valid date (YYYY-MM-DD).`);
+    }
     const dayOfWeek = new Date(date).getDay();
 
     // 1. Check curated routes first
@@ -633,8 +645,8 @@ export class MockDataProvider implements DataProvider {
     let synthesized = SYNTHESIZED_ROUTES.get(cacheKey);
     if (!synthesized) {
       synthesized = synthesizeRouteForPair(from, to);
-      SYNTHESIZED_ROUTES.set(cacheKey, synthesized);
-      SYNTHESIZED_ROUTES.set(synthesized.trainNumber, synthesized);
+      cacheSynthesizedRoute(cacheKey, synthesized);
+      cacheSynthesizedRoute(synthesized.trainNumber, synthesized);
     }
 
     return [synthesized];
@@ -647,6 +659,9 @@ export class MockDataProvider implements DataProvider {
     date: string,
     travelClass: TravelClass
   ): Promise<SectionAvailability> {
+    if (!date || isNaN(Date.parse(date))) {
+      throw new Error(`Invalid travel date format: "${date}". Expected valid date (YYYY-MM-DD).`);
+    }
     const train = getAnyTrain(trainNumber);
     if (!train) {
       return {

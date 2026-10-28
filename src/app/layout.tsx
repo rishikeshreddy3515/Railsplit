@@ -17,7 +17,11 @@ export const metadata: Metadata = {
   description: "Find confirmed split-ticket options for Indian Railways when direct seats are unavailable",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html
       lang="en"

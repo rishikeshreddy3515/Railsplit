@@ -208,13 +208,15 @@ export function runSameTrainDijkstraWithTrace(
     return 0;
   });
 
-  // Refine trace decisions: if multiple are confirmed, only the top 1 is strictly OPTIMAL_RELAXED
-  let foundOptimal = false;
-  for (const trace of traces) {
-    if (trace.decision === 'OPTIMAL_RELAXED') {
-      if (!foundOptimal) {
-        foundOptimal = true;
-      } else {
+  // Refine trace decisions: find the minimal totalCost among confirmed splits,
+  // ensure ONLY the strictly lowest-cost confirmed split is marked OPTIMAL_RELAXED,
+  // and all others are marked CONFIRMED_SUBOPTIMAL.
+  const confirmedTraces = traces.filter((t) => t.decision === 'OPTIMAL_RELAXED');
+  if (confirmedTraces.length > 0) {
+    confirmedTraces.sort((a, b) => a.totalCost - b.totalCost);
+    const optimalTrace = confirmedTraces[0];
+    for (const trace of confirmedTraces) {
+      if (trace !== optimalTrace) {
         trace.decision = 'CONFIRMED_SUBOPTIMAL';
         trace.decisionReason = 'Confirmed availability, but higher edge cost than optimal split cutpoint.';
       }
@@ -226,7 +228,7 @@ export function runSameTrainDijkstraWithTrace(
 
   const metrics: GraphExecutionMetrics = {
     verticesCount: 2 * intermediates.length + 2,
-    edgesEvaluated: 2 * intermediates.length + 1,
+    edgesEvaluated: 2 * intermediates.length,
     executionTimeMs: Math.max(0.12, executionTimeMs),
     intermediateCandidatesCount: intermediates.length,
     traces,

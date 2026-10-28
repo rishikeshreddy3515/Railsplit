@@ -107,25 +107,29 @@ export async function searchSplitJourneys(
 
     await Promise.all(
       intermediates.map(async (splitStop) => {
-        const [leg1, leg2] = await Promise.all([
-          provider.checkAvailability(
-            train.trainNumber,
-            from.code,
-            splitStop.station.code,
-            date,
-            travelClass
-          ),
-          provider.checkAvailability(
-            train.trainNumber,
-            splitStop.station.code,
-            to.code,
-            date,
-            travelClass
-          ),
-        ]);
+        try {
+          const [leg1, leg2] = await Promise.all([
+            provider.checkAvailability(
+              train.trainNumber,
+              from.code,
+              splitStop.station.code,
+              date,
+              travelClass
+            ),
+            provider.checkAvailability(
+              train.trainNumber,
+              splitStop.station.code,
+              to.code,
+              date,
+              travelClass
+            ),
+          ]);
 
-        leg1Map.set(splitStop.station.code, leg1);
-        leg2Map.set(splitStop.station.code, leg2);
+          leg1Map.set(splitStop.station.code, leg1);
+          leg2Map.set(splitStop.station.code, leg2);
+        } catch {
+          // Gracefully continue evaluating other intermediate stop candidates
+        }
       })
     );
 
