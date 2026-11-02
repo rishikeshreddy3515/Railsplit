@@ -15,8 +15,9 @@ const RAIL_LOADING_STATES = [
   { text: 'Querying direct General Quota (GNWL)' },
   { text: 'Scanning intermediate junction halts' },
   { text: 'Evaluating Remote Location Quotas (RLWL)' },
-  { text: 'Executing Hop-Constrained Same-Train Dijkstra' },
-  { text: 'Verifying connection invariance' },
+  { text: 'Checking Source-Origin Quota Optimization' },
+  { text: 'Computing 1-stop connecting junction break routes' },
+  { text: 'Verifying historical delays & layover buffers' },
   { text: 'Finalizing confirmed split-seat options' },
 ];
 
@@ -37,7 +38,7 @@ export default function SearchPage() {
   const [date, setDate] = useState(getTomorrow);
   const [travelClass, setTravelClass] = useState<TravelClass>('3A');
   const [includeSplits, setIncludeSplits] = useState(true);
-  const [minChangeTime, setMinChangeTime] = useState('90');
+  const [minChangeTime, setMinChangeTime] = useState('45');
 
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchResponse | null>(null);
@@ -78,6 +79,8 @@ export default function SearchPage() {
         date: travelDate,
         class: tClass,
         splits: 'true',
+        junctionSplits: 'true',
+        minLayover: minChangeTime,
         fresh: 'true',
       });
       if (trainNumber && trainNumber !== 'ALL') {
@@ -89,7 +92,7 @@ export default function SearchPage() {
         setResults((prev) => {
           if (!prev) return data;
           const otherSplits = trainNumber && trainNumber !== 'ALL'
-            ? prev.splitResults.filter((s) => s.trainNumber !== trainNumber)
+            ? prev.splitResults.filter((s) => !s.trainNumber.includes(trainNumber))
             : [];
           return {
             ...prev,
@@ -126,6 +129,8 @@ export default function SearchPage() {
         date: travelDate,
         class: tClass,
         splits: includeSplits ? 'true' : 'false',
+        junctionSplits: includeSplits ? 'true' : 'false',
+        minLayover: minChangeTime,
       });
       const res = await fetch(`/api/search?${params}`);
       const data = await res.json();
@@ -176,12 +181,12 @@ export default function SearchPage() {
         <div className="max-w-6xl mx-auto px-4 mt-4">
           <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 text-xs font-semibold text-rose-700 flex items-center justify-between">
             <span>{error}</span>
-            <button onClick={() => setError(null)} className="text-rose-500 font-bold ml-2">✕</button>
+            <button onClick={() => setError(null)} className="text-rose-500 font-bold ml-2 cursor-pointer">✕</button>
           </div>
         </div>
       )}
 
-      {/* View 1: Detailed Journey View (Page 5) */}
+      {/* View 1: Detailed Journey View */}
       {!loading && selectedJourney && results && (
         <JourneyDetailView
           split={selectedJourney}
@@ -190,7 +195,7 @@ export default function SearchPage() {
         />
       )}
 
-      {/* View 2: Search Results View (Pages 3 & 4) */}
+      {/* View 2: Search Results View */}
       {!loading && !selectedJourney && searched && results && (
         <SearchResultsView
           results={results}
@@ -201,10 +206,14 @@ export default function SearchPage() {
           onSelectJourney={(split) => setSelectedJourney(split)}
           onRequestSplits={handleRequestSplits}
           loadingSplitsTrain={loadingSplitsTrain}
+          onSelectDate={(newDate) => {
+            setDate(newDate);
+            executeSearch(results.request.from.code, results.request.to.code, newDate, results.request.travelClass);
+          }}
         />
       )}
 
-      {/* View 3: Landing / Home Hero & Search + Features (Pages 1 & 2) */}
+      {/* View 3: Landing / Home Hero & Search + Features */}
       {(!searched || (!results && !loading)) && !selectedJourney && (
         <>
           <HeroSearch

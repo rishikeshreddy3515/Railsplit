@@ -13,6 +13,12 @@ export async function GET(request: NextRequest) {
   const travelClass = searchParams.get('class') as TravelClass | null;
   const splitsParam = searchParams.get('splits');
   const includeSplits = splitsParam !== null ? splitsParam === 'true' : true;
+  const junctionSplitsParam = searchParams.get('junctionSplits');
+  const includeJunctionSplits =
+    junctionSplitsParam !== null ? junctionSplitsParam === 'true' : includeSplits;
+  const minLayoverMinutes = searchParams.get('minLayover')
+    ? parseInt(searchParams.get('minLayover')!, 10)
+    : 45;
   const trainNumber = searchParams.get('trainNumber') || undefined;
   const fresh = searchParams.get('fresh') === 'true';
 
@@ -30,7 +36,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const validClasses: TravelClass[] = ['SL', '3A', '2A', '1A', 'CC', '2S'];
+  const validClasses: TravelClass[] = ['SL', '3A', '2A', '1A', 'CC', '2S', 'EC'];
   if (!validClasses.includes(travelClass)) {
     return NextResponse.json(
       { error: `Invalid class. Valid options: ${validClasses.join(', ')}` },
@@ -66,6 +72,8 @@ export async function GET(request: NextRequest) {
       date,
       travelClass,
       includeSplits,
+      includeJunctionSplits,
+      minLayoverMinutes,
       trainNumber,
     });
 

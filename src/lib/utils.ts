@@ -64,3 +64,9 @@ export function calculateTransferDuration(
 ): string {
   return calculateDuration(arrTime, arrDay, depTime, depDay);
 }
+
+export function isSameOrEquivalentStation(code1: string, code2: string): boolean {
+  if (code1 === code2) return true;
+  if ((code1 === 'BOM' && code2 === 'MMCT') || (code1 === 'MMCT' && code2 === 'BOM')) return true;
+  return false;
+}

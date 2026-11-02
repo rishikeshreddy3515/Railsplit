@@ -152,12 +152,33 @@ export function runSameTrainDijkstraWithTrace(
     const totalFare =
       leg1.fare !== null && leg2.fare !== null ? leg1.fare + leg2.fare : null;
 
+    // Detect middle-of-the-night berth switch (00:00 - 05:00) and short halt (< 5 mins)
+    const haltTimeStr = stop.arrival || stop.departure || leg1.arrivalTime || leg2.departureTime || '12:00';
+    const haltHour = parseInt(haltTimeStr.split(':')[0], 10);
+    const isNightBerthSwitch = !isNaN(haltHour) && haltHour >= 0 && haltHour < 5;
+
+    let haltMinutes = 5;
+    if (stop.arrival && stop.departure) {
+      const [aH, aM] = stop.arrival.split(':').map(Number);
+      const [dH, dM] = stop.departure.split(':').map(Number);
+      if (!isNaN(aH) && !isNaN(dH)) {
+        let diff = (dH * 60 + dM) - (aH * 60 + aM);
+        if (diff < 0) diff += 1440;
+        haltMinutes = diff;
+      }
+    }
+    const isShortHalt = haltMinutes < 5;
+    const conveniencePenalty = (isNightBerthSwitch ? 500 : 0) + (isShortHalt ? 200 : 0);
+    const compositeCost = totalCost + conveniencePenalty;
+
     let decision: DijkstraDecisionType;
     let decisionReason: string;
 
     if (bothConfirmed) {
       decision = 'OPTIMAL_RELAXED';
-      decisionReason = `Confirmed quota unlocked on ${leg1.quota || 'RLWL'}. Zero transfer risk on Train #${trainNumber}.`;
+      decisionReason = isNightBerthSwitch
+        ? `Confirmed quota unlocked on ${leg1.quota || 'RLWL'}. Note: Midnight berth switch (${haltTimeStr}) at ${stop.station.name}.`
+        : `Confirmed quota unlocked on ${leg1.quota || 'RLWL'}. Zero transfer risk on Train #${trainNumber}.`;
     } else if (leg1.status === 'WAITLIST' || leg2.status === 'WAITLIST') {
       decision = 'PENALIZED_WAITLIST';
       decisionReason = `Heavy availability penalty (+10,000) applied due to waitlisted quota (${leg1.quota || leg2.quota}).`;
@@ -174,14 +195,18 @@ export function runSameTrainDijkstraWithTrace(
       leg2,
       leg1Cost: cost1,
       leg2Cost: cost2,
-      totalCost,
+      totalCost: compositeCost,
       decision,
       decisionReason,
     });
 
-    const whyRecommendation = bothConfirmed
+    let whyRecommendation = bothConfirmed
       ? `Discovered via Dijkstra shortest-path search on Train ${trainNumber}. Splitting at ${stop.station.name} (${stop.station.code}) unlocks confirmed separate station-quota berths (${leg1.quota || 'RLWL'} quota) on the exact same train with 0m transfer risk.`
       : undefined;
+
+    if (whyRecommendation && isNightBerthSwitch) {
+      whyRecommendation += ` ⚠️ Note: Night berth switch at ${stop.station.name} (${haltTimeStr}).`;
+    }
 
     results.push({
       trainNumber,
@@ -192,6 +217,8 @@ export function runSameTrainDijkstraWithTrace(
       totalFare,
       bothConfirmed,
       whyRecommendation,
+      isNightBerthSwitch,
+      isDaytimeOptimal: bothConfirmed && !isNightBerthSwitch,
     });
   }
 
@@ -208,15 +235,32 @@ export function runSameTrainDijkstraWithTrace(
     return 0;
   });
 
-  // Refine trace decisions: find the minimal totalCost among confirmed splits,
-  // ensure ONLY the strictly lowest-cost confirmed split is marked OPTIMAL_RELAXED,
-  // and all others are marked CONFIRMED_SUBOPTIMAL.
+  // Refine trace decisions:
+  // - Mark the strictly lowest-fare confirmed split as OPTIMAL_RELAXED.
+  // - If that lowest-fare split is a night split, find the best daytime confirmed split and mark it PRACTICAL_DAYTIME_OPTIMAL.
+  // - All other confirmed splits marked CONFIRMED_SUBOPTIMAL.
   const confirmedTraces = traces.filter((t) => t.decision === 'OPTIMAL_RELAXED');
   if (confirmedTraces.length > 0) {
     confirmedTraces.sort((a, b) => a.totalCost - b.totalCost);
     const optimalTrace = confirmedTraces[0];
+
+    // Check if there is a daytime optimal candidate
+    let daytimeCandidate: DijkstraNodeTrace | undefined;
+    const isOptimalNight = results.find((r) => r.splitStation.code === optimalTrace.splitStation.code)?.isNightBerthSwitch;
+    if (isOptimalNight) {
+      daytimeCandidate = confirmedTraces.find((t) => {
+        const matchRes = results.find((r) => r.splitStation.code === t.splitStation.code);
+        return matchRes && !matchRes.isNightBerthSwitch;
+      });
+    }
+
     for (const trace of confirmedTraces) {
-      if (trace !== optimalTrace) {
+      if (trace === optimalTrace) {
+        trace.decision = 'OPTIMAL_RELAXED';
+      } else if (trace === daytimeCandidate) {
+        trace.decision = 'PRACTICAL_DAYTIME_OPTIMAL';
+        trace.decisionReason = 'Recommended daytime berth switch avoiding midnight waking (00:00–05:00).';
+      } else {
         trace.decision = 'CONFIRMED_SUBOPTIMAL';
         trace.decisionReason = 'Confirmed availability, but higher edge cost than optimal split cutpoint.';
       }
